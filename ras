@@ -16,14 +16,18 @@ from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 
 # ========== НАСТРОЙКИ (ЗАПОЛНИТЕ СВОИМИ ДАННЫМИ) ==========
-API_ID = 39788279              # Ваш API ID (число) – получите на my.telegram.org
-API_HASH = 'baa7979e350407a5a45ce50dcd7e3008'    # Ваш API Hash
-PHONE = '+12766573041'       # Номер телефона аккаунта, от которого будет идти рассылка
-BOT_TOKEN = '8768016279:AAHO2De7zO5-qRwfVE_LlXPiAp_S1kI0uSY' # Токен бота от @BotFather
-OWNER_ID = 7285890980        # Ваш Telegram ID (узнайте у @userinfobot)
+from dotenv import load_dotenv
+load_dotenv()
 
-# Второй админ (если нужен, укажите ID, иначе оставьте None)
-6859492950 = None  # Например: 987654321
+API_ID = int(os.getenv('API_ID'))
+API_HASH = os.getenv('API_HASH')
+PHONE = os.getenv('PHONE')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+OWNER_ID = int(os.getenv('OWNER_ID'))
+SECOND_ADMIN_ID = os.getenv('SECOND_ADMIN_ID')
+SECOND_ADMIN_ID = int(SECOND_ADMIN_ID) if SECOND_ADMIN_ID else None
+SESSION_STRING = os.getenv('SESSION_STRING', '')
+
 
 # Session string – оставьте пустой при первом запуске.
 # После первого успешного запуска скопируйте выведенную в консоль строку и вставьте её сюда.
