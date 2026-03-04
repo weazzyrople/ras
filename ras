@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
+
 import aiosqlite
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -14,9 +15,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from telethon import TelegramClient, errors
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
-
-# ========== НАСТРОЙКИ (ЗАПОЛНИТЕ СВОИМИ ДАННЫМИ) ==========
 from dotenv import load_dotenv
+
+# ========== ЗАГРУЗКА .env ==========
 load_dotenv()
 
 API_ID = int(os.getenv('API_ID'))
@@ -24,15 +25,10 @@ API_HASH = os.getenv('API_HASH')
 PHONE = os.getenv('PHONE')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID'))
-SECOND_ADMIN_ID = os.getenv('SECOND_ADMIN_ID')
-SECOND_ADMIN_ID = int(SECOND_ADMIN_ID) if SECOND_ADMIN_ID else None
+_second = os.getenv('SECOND_ADMIN_ID', '')
+SECOND_ADMIN_ID = int(_second) if _second.strip() else None
 SESSION_STRING = os.getenv('SESSION_STRING', '')
-
-
-# Session string – оставьте пустой при первом запуске.
-# После первого успешного запуска скопируйте выведенную в консоль строку и вставьте её сюда.
-SESSION_STRING = ''
-# ===========================================================
+# ====================================
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -55,10 +51,8 @@ async def init_db():
         columns = await cursor.fetchall()
         column_names = [col[1] for col in columns]
         if 'interval_minutes' not in column_names:
-            logger.info("Добавляем колонку interval_minutes")
             await db.execute("ALTER TABLE chats ADD COLUMN interval_minutes INTEGER DEFAULT 60")
         if 'banned' not in column_names:
-            logger.info("Добавляем колонку banned")
             await db.execute("ALTER TABLE chats ADD COLUMN banned INTEGER DEFAULT 0")
 
         await db.execute('''
@@ -75,7 +69,6 @@ async def init_db():
                 date TEXT
             )
         ''')
-
         await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
                          ('message_text', 'Привет! Это автосообщение.'))
         await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
@@ -88,8 +81,7 @@ async def get_chats(include_banned=False):
             cursor = await db.execute('SELECT chat_id, title, interval_minutes FROM chats')
         else:
             cursor = await db.execute('SELECT chat_id, title, interval_minutes FROM chats WHERE banned = 0')
-        rows = await cursor.fetchall()
-        return rows
+        return await cursor.fetchall()
 
 async def add_chat(chat_id, title, interval_minutes):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -102,7 +94,6 @@ async def add_chat(chat_id, title, interval_minutes):
             return True
         except aiosqlite.IntegrityError:
             return False
-
 
 async def remove_chat(chat_id):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -186,7 +177,7 @@ class SetText(StatesGroup):
 class SetInterval(StatesGroup):
     waiting_for_minutes = State()
 
-# ----- Вспомогательная функция для отображения списка групп (только для callback) -----
+# ----- Показ списка групп -----
 async def show_my_chats(callback: types.CallbackQuery, page: int):
     try:
         dialogs = await user_client.get_dialogs()
@@ -213,8 +204,6 @@ async def show_my_chats(callback: types.CallbackQuery, page: int):
                 clean_id = abs(chat_id)
             builder.button(text=title, callback_data=f"add_from_list_{clean_id}_{page}")
 
-
-# Кнопки пагинации
         nav_buttons = []
         if page > 0:
             nav_buttons.append(InlineKeyboardButton(text="◀️ Предыдущая", callback_data=f"my_chats_page_{page-1}"))
@@ -232,7 +221,7 @@ async def show_my_chats(callback: types.CallbackQuery, page: int):
         logger.exception("Ошибка в show_my_chats")
         await callback.message.edit_text(f"❌ Ошибка: {e}", reply_markup=back_keyboard())
 
-# ----- Обработчики aiogram -----
+# ----- Обработчики -----
 @dp.message(Command("start"))
 async def start(message: types.Message):
     if not is_owner(message.from_user.id):
@@ -247,7 +236,6 @@ async def back_to_main(callback: types.CallbackQuery):
         return
     await callback.message.edit_text("👋 Главное меню", reply_markup=main_keyboard())
 
-# ----- Добавление чата по ссылке -----
 @dp.callback_query(F.data == "add_chat")
 async def add_chat_start(callback: types.CallbackQuery, state: FSMContext):
     if not is_owner(callback.from_user.id):
@@ -270,25 +258,22 @@ async def add_chat_link(message: types.Message, state: FSMContext):
         else:
             chat_id = abs(raw_id)
         title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-
-        # Проверка прав на отправку
         try:
             msg = await user_client.send_message(chat_id, ".")
             await msg.delete()
         except errors.UserBannedInChannelError:
-            await message.answer(f"❌ Аккаунт забанен в чате {title}. Добавление невозможно.")
+            await message.answer(f"❌ Аккаунт забанен в чате {title}.")
             await state.clear()
             return
         except Exception as e:
             logger.warning(f"Не удалось проверить права в {chat_id}: {e}")
 
         await state.update_data(chat_id=chat_id, title=title)
-        await message.answer(f"Чат **{title}** (ID: {chat_id})\nУкажите **интервал в минутах** (целое число, например 5):")
+        await message.answer(f"Чат **{title}** (ID: {chat_id})\nУкажите **интервал в минутах**:")
         await state.set_state(AddChat.waiting_for_interval)
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
         await state.clear()
-
 
 @dp.message(AddChat.waiting_for_interval)
 async def add_chat_interval(message: types.Message, state: FSMContext):
@@ -306,17 +291,12 @@ async def add_chat_interval(message: types.Message, state: FSMContext):
     chat_id = data['chat_id']
     title = data['title']
     if await add_chat(chat_id, title, interval):
-        try:
-            await user_client.get_entity(chat_id)
-        except Exception as e:
-            logger.warning(f"Не удалось сразу загрузить сущность для {chat_id}: {e}")
         await message.answer(f"✅ Чат **{title}** добавлен с интервалом {interval} мин.")
     else:
         await message.answer("❌ Чат уже в списке.")
     await state.clear()
     await message.answer("👋 Возврат в меню", reply_markup=main_keyboard())
 
-# ----- Мои чаты (с пагинацией) -----
 @dp.callback_query(F.data == "my_chats")
 async def my_chats_callback(callback: types.CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -332,7 +312,6 @@ async def my_chats_page_callback(callback: types.CallbackQuery):
     page = int(callback.data.split("_")[3])
     await show_my_chats(callback, page)
 
-# ----- Добавление группы из списка -----
 @dp.callback_query(F.data.startswith("add_from_list_"))
 async def add_from_list(callback: types.CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -341,7 +320,6 @@ async def add_from_list(callback: types.CallbackQuery):
     parts = callback.data.split("_")
     chat_id = int(parts[3])
     page = int(parts[4])
-
     try:
         entity = await user_client.get_entity(chat_id)
         title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
@@ -352,10 +330,8 @@ async def add_from_list(callback: types.CallbackQuery):
             await callback.answer("❌ Эта группа уже в списке рассылки.", show_alert=True)
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
-
     await show_my_chats(callback, page)
 
-# ----- Список рассылки -----
 @dp.callback_query(F.data == "list_chats")
 async def list_chats(callback: types.CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -365,7 +341,6 @@ async def list_chats(callback: types.CallbackQuery):
     if not chats:
         await callback.message.edit_text("📭 Список чатов пуст.", reply_markup=back_keyboard())
         return
-
     builder = InlineKeyboardBuilder()
     for cid, title, interval in chats:
         async with aiosqlite.connect(DB_PATH) as db:
@@ -377,7 +352,6 @@ async def list_chats(callback: types.CallbackQuery):
     builder.adjust(1)
     await callback.message.edit_text("📋 **Список рассылки:**", reply_markup=builder.as_markup(), parse_mode="Markdown")
 
-# ----- Управление конкретным чатом -----
 @dp.callback_query(F.data.startswith("chat_"))
 async def chat_menu(callback: types.CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -392,8 +366,7 @@ async def chat_menu(callback: types.CallbackQuery):
     status = "⛔️ Забанен" if banned else "✅ Активен"
     text = f"**Чат:** {title}\n**ID:** `{chat_id}`\n**Статус:** {status}\n**Интервал:** {interval} мин."
 
-
-builder = InlineKeyboardBuilder()
+    builder = InlineKeyboardBuilder()
     builder.button(text="✏️ Изменить интервал", callback_data=f"setint_{chat_id}")
     builder.button(text="❌ Удалить чат", callback_data=f"delchat_{chat_id}")
     builder.button(text="⏱️ Установить 3 мин", callback_data=f"set3_{chat_id}")
@@ -428,7 +401,7 @@ async def set_interval_start(callback: types.CallbackQuery, state: FSMContext):
         return
     chat_id = int(callback.data.split("_")[1])
     await state.update_data(chat_id=chat_id)
-    await callback.message.edit_text("Введите новый интервал в минутах (целое число):")
+    await callback.message.edit_text("Введите новый интервал в минутах:")
     await state.set_state(SetInterval.waiting_for_minutes)
 
 @dp.message(SetInterval.waiting_for_minutes)
@@ -446,11 +419,10 @@ async def set_interval_minutes(message: types.Message, state: FSMContext):
     data = await state.get_data()
     chat_id = data['chat_id']
     await set_chat_interval(chat_id, minutes)
-    await message.answer(f"✅ Интервал для чата {chat_id} обновлён на {minutes} мин.")
+    await message.answer(f"✅ Интервал обновлён на {minutes} мин.")
     await state.clear()
     await message.answer("👋 Возврат в меню", reply_markup=main_keyboard())
 
-# ----- Текст сообщения -----
 @dp.callback_query(F.data == "set_text")
 async def set_text_start(callback: types.CallbackQuery, state: FSMContext):
     if not is_owner(callback.from_user.id):
@@ -470,7 +442,6 @@ async def set_text_input(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("👋 Меню", reply_markup=main_keyboard())
 
-# ----- Запуск/остановка рассылки -----
 @dp.callback_query(F.data == "start_posting")
 async def start_posting(callback: types.CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -487,7 +458,6 @@ async def stop_posting(callback: types.CallbackQuery):
     await set_setting('posting_active', '0')
     await callback.message.edit_text("⏸️ Рассылка остановлена.", reply_markup=main_keyboard())
 
-
 @dp.callback_query(F.data == "status")
 async def status(callback: types.CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -499,8 +469,8 @@ async def status(callback: types.CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute('SELECT COUNT(*) FROM chats WHERE banned = 1')
         banned_cnt = (await cur.fetchone())[0]
-    status = "🟢 Активна" if active == '1' else "🔴 Остановлена"
-    msg = f"**Статус:** {status}\n**Активных чатов:** {len(chats)}\n**Забаненных:** {banned_cnt}\n**Текст:** {text}"
+    status_str = "🟢 Активна" if active == '1' else "🔴 Остановлена"
+    msg = f"**Статус:** {status_str}\n**Активных чатов:** {len(chats)}\n**Забаненных:** {banned_cnt}\n**Текст:** {text}"
     await callback.message.edit_text(msg, reply_markup=back_keyboard(), parse_mode="Markdown")
 
 # ----- Фоновая рассылка -----
@@ -528,10 +498,10 @@ async def posting_worker():
                             logger.warning(f"Flood wait {e.seconds}с")
                             await asyncio.sleep(e.seconds)
                         except (errors.UserBannedInChannelError, errors.ChatWriteForbiddenError) as e:
-                            logger.error(f"❌ Нет прав / бан в чате {chat_id}. Помечаем как banned. Ошибка: {e}")
+                            logger.error(f"❌ Бан в чате {chat_id}: {e}")
                             await mark_chat_banned(chat_id, True)
                         except ValueError as e:
-                            logger.error(f"❌ Не удалось найти сущность для чата {chat_id}. Помечаем как banned. Ошибка: {e}")
+                            logger.error(f"❌ Не найдена сущность {chat_id}: {e}")
                             await mark_chat_banned(chat_id, True)
                         except Exception as e:
                             logger.error(f"Ошибка отправки в {chat_id}: {e}")
@@ -551,7 +521,7 @@ async def main():
         await user_client.start(phone=PHONE)
         session_str = user_client.session.save()
         logger.info("=" * 50)
-        logger.info("СОХРАНИТЕ ЭТУ СТРОКУ И ВСТАВЬТЕ В SESSION_STRING:")
+        logger.info("СОХРАНИТЕ ЭТУ СТРОКУ И ВСТАВЬТЕ В SESSION_STRING в .env:")
         logger.info(session_str)
         logger.info("=" * 50)
 
@@ -564,4 +534,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-
