@@ -1,0 +1,19 @@
+# Получить на my.telegram.org
+API_ID=39788279
+API_HASH=baa7979e350407a5a45ce50dcd7e3008
+
+# Номер телефона аккаунта для рассылки
+PHONE=+12766573041
+
+# Токен от @BotFather
+BOT_TOKEN=8768016279:AAFzOQsI2L_4yuoSOYnXVpBSWr3U1kxMdnA
+
+# Ваш Telegram ID (узнать у @userinfobot)
+OWNER_ID=7285890980
+
+# Второй админ (оставьте пустым если не нужен)
+SECOND_ADMIN_ID=6859492950
+
+# Оставьте пустым при первом запуске!
+# После первого запуска скопируйте строку из консоли и вставьте сюда
+SESSION_STRING=
