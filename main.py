@@ -1,9 +1,39 @@
+import subprocess
+import sys
+
+# ========== АВТОУСТАНОВКА БИБЛИОТЕК ==========
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package, "-q"])
+
+try:
+    import aiogram
+except ImportError:
+    print("Устанавливаю aiogram..."); install("aiogram")
+
+try:
+    import aiosqlite
+except ImportError:
+    print("Устанавливаю aiosqlite..."); install("aiosqlite")
+
+try:
+    import telethon
+except ImportError:
+    print("Устанавливаю telethon..."); install("telethon")
+
+try:
+    import dotenv
+except ImportError:
+    print("Устанавливаю python-dotenv..."); install("python-dotenv")
+
+print("✅ Все библиотеки установлены!")
+# =============================================
+
 import asyncio
 import logging
 import os
-import sys
 from datetime import datetime, timedelta
 
+import sys
 import aiosqlite
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
